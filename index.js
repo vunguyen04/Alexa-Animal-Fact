@@ -7,6 +7,7 @@
 
 const Alexa = require("ask-sdk-core");
 const https = require("https");
+const AWS = require("aws-sdk");
 
 
 //invocationName = "animal facts";
@@ -110,6 +111,7 @@ const AMAZON_StopIntent_Handler = {
     },
 };
 
+//Fallback intent is used to handle unrecognized response
 const AMAZON_FallbackIntent_Handler = {
     canHandle(handlerInput) {
         const request = handlerInput.requestEnvelope.request;
@@ -118,13 +120,10 @@ const AMAZON_FallbackIntent_Handler = {
     handle(handlerInput) {
         const request = handlerInput.requestEnvelope.request;
         const responseBuilder = handlerInput.responseBuilder;
-        let sessionAttributes = handlerInput.attributesManager.getSessionAttributes();
-
-        let previousSpeech = getPreviousSpeechOutput(sessionAttributes);
 
         return responseBuilder
-            .speak('Sorry I didnt catch what you said, ' + stripSpeak(previousSpeech.outputSpeech))
-            .reprompt(stripSpeak(previousSpeech.reprompt))
+            .speak('Sorry I didnt understand what you said, ' )
+            .reprompt('try again ')
             .getResponse();
     },
 };
@@ -167,8 +166,8 @@ const AnimalNameIntent_Handler = {
         let animalName = slotValues.animalname.heardAs;
 
         //   SLOT: animalname 
-        if (animalName) {
-            slotStatus += ' I heared that you would like to know some fact about ' + animalName + '.';
+        if (slotValues.animalname.heardAs) {
+            slotStatus += ' I heared that you would like to know some fact about ' + animalName + '.';            
         } else {
             slotStatus += ' Sorry. I didn\'t catch that animal. Please try again or \'help\' to get some advice!';
         }
@@ -176,7 +175,7 @@ const AnimalNameIntent_Handler = {
             slotStatus += ' Here is some facts about ' + animalName + '.';
             //add function to get fact about the animal.
         }
-
+        
         if (slotValues.animalname.ERstatus === 'ER_SUCCESS_NO_MATCH') {
             slotStatus += ' Sorry. ' + capitalize(animalName) + ' is not available currently.';
             console.log('I will suggest the ' + animalName + ' to our administrator to make some fact as soon as possible. Thanks');
@@ -186,7 +185,7 @@ const AnimalNameIntent_Handler = {
         if ((slotValues.animalname.ERstatus === 'ER_SUCCESS_NO_MATCH') || (!animalName)) {
             slotStatus += 'A few valid values are, ' + sayArray(getExampleSlotValues('AnimalNameIntent', 'animalname'), 'or');
         }
-
+        
         say += slotStatus;
 
 
