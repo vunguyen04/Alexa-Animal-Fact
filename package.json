@@ -1,0 +1,9 @@
+{
+  "name": "animalfact",
+  "version": "0.0.0",
+  "description": "animalfact",
+  "main": "app.js",
+  "author": {
+    "name": ""
+  }
+}
