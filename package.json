@@ -3,9 +3,7 @@
   "version": "1.1.0",
   "description": "animalfact",
   "main": "index.js",
-  "author": {
-    "name": "Vu Nguyen"
-  },
+  "author": "Vivek Kapoor",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -19,7 +17,6 @@
     "Node.js",
     "Node14.x"
   ],
-  "author": "Vivek Kapoor",
   "license": "ISC",
   "bugs": {
     "url": "https://github.com/technotablet/alexa-course-custom-skill/issues"

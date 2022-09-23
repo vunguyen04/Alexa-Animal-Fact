@@ -7,8 +7,10 @@
 
 const Alexa = require("ask-sdk-core");
 const https = require("https");
-const AWS = require("aws-sdk");
 
+const dbHelper = require('./dbHelper');
+
+const dynamoDBTableName = "dynamodb-starter";
 
 //invocationName = "animal facts";
 const invocationName = "vu factcode";
@@ -31,17 +33,6 @@ function getMemoryAttributes() {
         "lastSpeechOutput": {},
         "nextIntent": []
 
-        // "favoriteColor":"",
-        // "name":"",
-        // "namePronounce":"",
-        // "email":"",
-        // "mobileNumber":"",
-        // "city":"",
-        // "state":"",
-        // "postcode":"",
-        // "birthday":"",
-        // "bookmark":0,
-        // "wishlist":[],
     };
     return memoryAttributes;
 };
@@ -49,7 +40,7 @@ function getMemoryAttributes() {
 const maxHistorySize = 20; // remember only latest 20 intents 
 
 
-// 1. Intent Handlers =============================================
+//Intent Handlers =============================================
 //good for now?
 const AMAZON_CancelIntent_Handler = {
     canHandle(handlerInput) {
@@ -59,10 +50,9 @@ const AMAZON_CancelIntent_Handler = {
     handle(handlerInput) {
         const request = handlerInput.requestEnvelope.request;
         const responseBuilder = handlerInput.responseBuilder;
-        let sessionAttributes = handlerInput.attributesManager.getSessionAttributes();
 
 
-        let say = 'Okay, talk to you later! ';
+        let say = 'Okay, talk to you later!';
 
         return responseBuilder
             .speak(say)
@@ -70,15 +60,16 @@ const AMAZON_CancelIntent_Handler = {
             .getResponse();
     },
 };
-//need to fix
+
+//help intent
 const HelpIntent_Handler = {
     canHandle(handlerInput) {
         const request = handlerInput.requestEnvelope.request;
         return request.type === 'IntentRequest' && request.intent.name === 'HelpIntent';
     },
-    handle(handlerInput) {       
-        const responseBuilder = handlerInput.responseBuilder;       
-      
+    handle(handlerInput) {
+        const responseBuilder = handlerInput.responseBuilder;
+
         let say = 'Some of the animals are dog, cat, and horse.';
 
         say += ' Here something you can ask me, ';
@@ -99,10 +90,8 @@ const AMAZON_StopIntent_Handler = {
     handle(handlerInput) {
         const request = handlerInput.requestEnvelope.request;
         const responseBuilder = handlerInput.responseBuilder;
-        let sessionAttributes = handlerInput.attributesManager.getSessionAttributes();
 
-
-        let say = 'Okay, talk to you later! ';
+        let say = 'Okay, talk to you later!';
 
         return responseBuilder
             .speak(say)
@@ -122,7 +111,7 @@ const AMAZON_FallbackIntent_Handler = {
         const responseBuilder = handlerInput.responseBuilder;
 
         return responseBuilder
-            .speak('Sorry I didnt understand what you said, ' )
+            .speak('Sorry I didnt understand what you said')
             .reprompt('try again ')
             .getResponse();
     },
@@ -136,7 +125,6 @@ const AMAZON_NavigateHomeIntent_Handler = {
     handle(handlerInput) {
         const request = handlerInput.requestEnvelope.request;
         const responseBuilder = handlerInput.responseBuilder;
-        let sessionAttributes = handlerInput.attributesManager.getSessionAttributes();
 
         let say = 'Hello from AMAZON.NavigateHomeIntent. ';
 
@@ -153,47 +141,57 @@ const AnimalNameIntent_Handler = {
         const request = handlerInput.requestEnvelope.request;
         return request.type === 'IntentRequest' && request.intent.name === 'AnimalNameIntent';
     },
-    handle(handlerInput) {
+    async handle(handlerInput) {
         const request = handlerInput.requestEnvelope.request;
         const responseBuilder = handlerInput.responseBuilder;
-        let sessionAttributes = handlerInput.attributesManager.getSessionAttributes();
 
-        let say = 'Hello there!';
-
-        let slotStatus = '';
-        let resolvedSlot;
         let slotValues = getSlotValues(request.intent.slots);
-        let animalName = slotValues.animalname.heardAs;
-
-        //   SLOT: animalname 
-        if (slotValues.animalname.heardAs) {
-            slotStatus += ' I heared that you would like to know some fact about ' + animalName + '.';            
-        } else {
-            slotStatus += ' Sorry. I didn\'t catch that animal. Please try again or \'help\' to get some advice!';
-        }
-        if (slotValues.animalname.ERstatus === 'ER_SUCCESS_MATCH') {
-            slotStatus += ' Here is some facts about ' + animalName + '.';
-            //add function to get fact about the animal.
-        }
+        const animalName = slotValues.animalname.heardAs;
         
-        if (slotValues.animalname.ERstatus === 'ER_SUCCESS_NO_MATCH') {
-            slotStatus += ' Sorry. ' + capitalize(animalName) + ' is not available currently.';
-            console.log('I will suggest the ' + animalName + ' to our administrator to make some fact as soon as possible. Thanks');
-            //later work send suggestion
-        }
-
-        if ((slotValues.animalname.ERstatus === 'ER_SUCCESS_NO_MATCH') || (!animalName)) {
-            slotStatus += 'A few valid values are, ' + sayArray(getExampleSlotValues('AnimalNameIntent', 'animalname'), 'or');
-        }
-        
-        say += slotStatus;
-
-
-        return responseBuilder
-            .speak(say)
-            .reprompt('try again, ' + say)
-            .getResponse();
+        return dbHelper.getAnimalFact(animalName)
+            .then((data) => {
+                var speechText = "There are some facts as about the " + animalName+" as following. "
+                if (data.length == 0) {
+                    speechText = "Sorry the database is empty, add fact to your favorite anmimal by saying add animal"
+                } else {
+                    speechText += data.map(e => e.Fact1) +" If you want to hear more about "+animalName+". Say \'More About " + animalName+"\'."
+                }
+                return responseBuilder
+                    .speak(speechText)
+                    .reprompt("Hi")
+                    .getResponse();
+            })        
     },
+
+};
+
+const MoreFactIntent_Handler = {
+    canHandle(handlerInput) {
+        const request = handlerInput.requestEnvelope.request;
+        return request.type === 'IntentRequest' && request.intent.name === 'MoreFactIntent';
+    },
+    async handle(handlerInput) {
+        const request = handlerInput.requestEnvelope.request;
+        const responseBuilder = handlerInput.responseBuilder;
+
+        let slotValues = getSlotValues(request.intent.slots);
+        const animalName = slotValues.animalname.heardAs;
+
+        return dbHelper.getAnimalFact(animalName)
+            .then((data) => {
+                var speechText = ""
+                if (data.length == 0) {
+                    speechText = "Sorry the database is empty, add fact to your favorite anmimal by saying add animal"
+                } else {
+                    speechText += data.map(e => e.Fact2)
+                }
+                return responseBuilder
+                    .speak(speechText)
+                    .reprompt("Hi")
+                    .getResponse();
+            })
+    },
+
 };
 
 
@@ -214,6 +212,8 @@ const LaunchRequest_Handler = {
             .getResponse();
     },
 };
+
+
 
 const SessionEndedHandler = {
     canHandle(handlerInput) {
@@ -244,29 +244,13 @@ const ErrorHandler = {
 };
 
 
-// 2. Constants ===========================================================================
 
-// Here you can define static data, to be used elsewhere in your code.  For example: 
-//    const myString = "Hello World";
-//    const myArray  = [ "orange", "grape", "strawberry" ];
-//    const myObject = { "city": "Boston",  "state":"Massachusetts" };
 
-const APP_ID = undefined;  // TODO replace with your Skill ID (OPTIONAL).
-
-// 3.  Helper Functions ===================================================================
+//Helper Functions ===================================================================
 
 function capitalize(myString) {
 
     return myString.replace(/(?:^|\s)\S/g, function (a) { return a.toUpperCase(); });
-}
-
-
-function randomElement(myArray) {
-    return (myArray[Math.floor(Math.random() * myArray.length)]);
-}
-
-function stripSpeak(str) {
-    return (str.replace('<speak>', '').replace('</speak>', ''));
 }
 
 
@@ -365,262 +349,10 @@ function sayArray(myData, penultimateWord = 'and') {
     });
     return result;
 }
-function supportsDisplay(handlerInput) // returns true if the skill is running on a device with a display (Echo Show, Echo Spot, etc.) 
-{                                      //  Enable your skill for display as shown here: https://alexa.design/enabledisplay 
-    const hasDisplay =
-        handlerInput.requestEnvelope.context &&
-        handlerInput.requestEnvelope.context.System &&
-        handlerInput.requestEnvelope.context.System.device &&
-        handlerInput.requestEnvelope.context.System.device.supportedInterfaces &&
-        handlerInput.requestEnvelope.context.System.device.supportedInterfaces.Display;
 
-    return hasDisplay;
-}
 
 
-const welcomeCardImg = {
-    smallImageUrl: "https://s3.amazonaws.com/skill-images-789/cards/card_plane720_480.png",
-    largeImageUrl: "https://s3.amazonaws.com/skill-images-789/cards/card_plane1200_800.png"
-
-
-};
-
-const DisplayImg1 = {
-    title: 'Jet Plane',
-    url: 'https://s3.amazonaws.com/skill-images-789/display/plane340_340.png'
-};
-const DisplayImg2 = {
-    title: 'Starry Sky',
-    url: 'https://s3.amazonaws.com/skill-images-789/display/background1024_600.png'
-
-};
-
-function getCustomIntents() {
-    const modelIntents = model.interactionModel.languageModel.intents;
-    console.log("error ??? " + modelIntents[0]);
-    let customIntents = [];
-
-
-    for (let i = 0; i < modelIntents.length; i++) {
-
-        if (modelIntents[i].name.substring(0, 7) != "AMAZON." && modelIntents[i].name !== "LaunchRequest") {
-            customIntents.push(modelIntents[i]);
-        }
-        
-    }
-    return customIntents;
-}
-
-function getSampleUtterance(intent) {
-
-    return randomElement(intent.samples);
-
-}
-
-function getPreviousIntent(attrs) {
-
-    if (attrs.history && attrs.history.length > 1) {
-        return attrs.history[attrs.history.length - 2].IntentRequest;
-
-    } else {
-        return false;
-    }
-
-}
-
-function getPreviousSpeechOutput(attrs) {
-
-    if (attrs.lastSpeechOutput && attrs.history.length > 1) {
-        return attrs.lastSpeechOutput;
-
-    } else {
-        return false;
-    }
-
-}
-
-function timeDelta(t1, t2) {
-
-    const dt1 = new Date(t1);
-    const dt2 = new Date(t2);
-    const timeSpanMS = dt2.getTime() - dt1.getTime();
-    const span = {
-        "timeSpanMIN": Math.floor(timeSpanMS / (1000 * 60)),
-        "timeSpanHR": Math.floor(timeSpanMS / (1000 * 60 * 60)),
-        "timeSpanDAY": Math.floor(timeSpanMS / (1000 * 60 * 60 * 24)),
-        "timeSpanDesc": ""
-    };
-
-
-    if (span.timeSpanHR < 2) {
-        span.timeSpanDesc = span.timeSpanMIN + " minutes";
-    } else if (span.timeSpanDAY < 2) {
-        span.timeSpanDesc = span.timeSpanHR + " hours";
-    } else {
-        span.timeSpanDesc = span.timeSpanDAY + " days";
-    }
-
-
-    return span;
-
-}
-
-
-const InitMemoryAttributesInterceptor = {
-    process(handlerInput) {
-        let sessionAttributes = {};
-        if (handlerInput.requestEnvelope.session['new']) {
-
-            sessionAttributes = handlerInput.attributesManager.getSessionAttributes();
-
-            let memoryAttributes = getMemoryAttributes();
-
-            if (Object.keys(sessionAttributes).length === 0) {
-
-                Object.keys(memoryAttributes).forEach(function (key) {  // initialize all attributes from global list 
-
-                    sessionAttributes[key] = memoryAttributes[key];
-
-                });
-
-            }
-            handlerInput.attributesManager.setSessionAttributes(sessionAttributes);
-
-
-        }
-    }
-};
-
-const RequestHistoryInterceptor = {
-    process(handlerInput) {
-
-        const thisRequest = handlerInput.requestEnvelope.request;
-        let sessionAttributes = handlerInput.attributesManager.getSessionAttributes();
-
-        let history = sessionAttributes['history'] || [];
-
-        let IntentRequest = {};
-        if (thisRequest.type === 'IntentRequest') {
-
-            let slots = [];
-
-            IntentRequest = {
-                'IntentRequest': thisRequest.intent.name
-            };
-
-            if (thisRequest.intent.slots) {
-
-                for (let slot in thisRequest.intent.slots) {
-                    let slotObj = {};
-                    slotObj[slot] = thisRequest.intent.slots[slot].value;
-                    slots.push(slotObj);
-                }
-
-                IntentRequest = {
-                    'IntentRequest': thisRequest.intent.name,
-                    'slots': slots
-                };
-
-            }
-
-        } else {
-            IntentRequest = { 'IntentRequest': thisRequest.type };
-        }
-        if (history.length > maxHistorySize - 1) {
-            history.shift();
-        }
-        history.push(IntentRequest);
-
-        handlerInput.attributesManager.setSessionAttributes(sessionAttributes);
-
-    }
-
-};
-
-
-
-
-const RequestPersistenceInterceptor = {
-    process(handlerInput) {
-
-        if (handlerInput.requestEnvelope.session['new']) {
-
-            return new Promise((resolve, reject) => {
-
-                handlerInput.attributesManager.getPersistentAttributes()
-
-                    .then((sessionAttributes) => {
-                        sessionAttributes = sessionAttributes || {};
-
-
-                        sessionAttributes['launchCount'] += 1;
-
-                        handlerInput.attributesManager.setSessionAttributes(sessionAttributes);
-
-                        handlerInput.attributesManager.savePersistentAttributes()
-                            .then(() => {
-                                resolve();
-                            })
-                            .catch((err) => {
-                                reject(err);
-                            });
-                    });
-
-            });
-
-        } // end session['new'] 
-    }
-};
-
-
-const ResponseRecordSpeechOutputInterceptor = {
-    process(handlerInput, responseOutput) {
-
-        let sessionAttributes = handlerInput.attributesManager.getSessionAttributes();
-        let lastSpeechOutput = {
-            "outputSpeech": responseOutput.outputSpeech.ssml,
-            "reprompt": responseOutput.reprompt.outputSpeech.ssml
-        };
-
-        sessionAttributes['lastSpeechOutput'] = lastSpeechOutput;
-
-        handlerInput.attributesManager.setSessionAttributes(sessionAttributes);
-
-    }
-};
-
-const ResponsePersistenceInterceptor = {
-    process(handlerInput, responseOutput) {
-
-        const ses = (typeof responseOutput.shouldEndSession == "undefined" ? true : responseOutput.shouldEndSession);
-
-        if (ses || handlerInput.requestEnvelope.request.type == 'SessionEndedRequest') { // skill was stopped or timed out 
-
-            let sessionAttributes = handlerInput.attributesManager.getSessionAttributes();
-
-            sessionAttributes['lastUseTimestamp'] = new Date(handlerInput.requestEnvelope.request.timestamp).getTime();
-
-            handlerInput.attributesManager.setPersistentAttributes(sessionAttributes);
-
-            return new Promise((resolve, reject) => {
-                handlerInput.attributesManager.savePersistentAttributes()
-                    .then(() => {
-                        resolve();
-                    })
-                    .catch((err) => {
-                        reject(err);
-                    });
-
-            });
-
-        }
-
-    }
-};
-
-
-
-// 4. Exports handler function and setup ===================================================
+//Exports handler function and setup ===================================================
 const skillBuilder = Alexa.SkillBuilders.custom();
 exports.handler = skillBuilder
     .addRequestHandlers(
@@ -630,6 +362,7 @@ exports.handler = skillBuilder
         AMAZON_FallbackIntent_Handler,
         AMAZON_NavigateHomeIntent_Handler,
         AnimalNameIntent_Handler,
+        MoreFactIntent_Handler,
         LaunchRequest_Handler,
         SessionEndedHandler
     )
