@@ -8,25 +8,6 @@ const tableName = "AnimalFact";
 var dbHelper = function () { };
 var docClient = new AWS.DynamoDB.DocumentClient();
 
-dbHelper.prototype.addAnimalFact = (name, fact) => {
-    return new Promise((resolve, reject) => {
-        const params = {
-            TableName: tableName,
-            Item: {
-                'Animal_Name': name,
-                'Fact': fact
-            }
-        };
-        docClient.put(params, (err, data) => {
-            if (err) {
-                console.log("Unable to insert =>", JSON.stringify(err))
-                return reject("Unable to insert");
-            }
-            console.log("Saved Data, ", JSON.stringify(data));
-            resolve(data);
-        });
-    });
-}
 
 dbHelper.prototype.getAnimalFact = (name) => {
     return new Promise((resolve, reject) => {
@@ -48,28 +29,6 @@ dbHelper.prototype.getAnimalFact = (name) => {
             console.log("GetItem succeeded:", JSON.stringify(data, null, 2));
             resolve(data.Items)
 
-        })
-    });
-}
-
-dbHelper.prototype.removeAnimalFact = (name, fact) => {
-    return new Promise((resolve, reject) => {
-        const params = {
-            TableName: tableName,
-            Key: {
-                "Animal_Name": name,
-                "Fact": fact
-            },
-            ConditionExpression: "attribute_exists(AnimalName)"
-        }
-        docClient.delete(params, function (err, data) {
-            if (err) {
-                console.error("Unable to delete item. Error JSON:", JSON.stringify(err, null, 2));
-                return reject(JSON.stringify(err, null, 2))
-            }
-            console.log(JSON.stringify(err));
-            console.log("DeleteItem succeeded:", JSON.stringify(data, null, 2));
-            resolve()
         })
     });
 }

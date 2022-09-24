@@ -9,6 +9,7 @@ const Alexa = require("ask-sdk-core");
 const https = require("https");
 
 const dbHelper = require('./dbHelper');
+const userDBRequest = require('./userDBRequest');
 
 const dynamoDBTableName = "dynamodb-starter";
 
@@ -16,28 +17,6 @@ const dynamoDBTableName = "dynamodb-starter";
 const invocationName = "vu factcode";
 
 
-
-// Session Attributes 
-//   Alexa will track attributes for you, by default only during the lifespan of your session.
-//   The history[] array will track previous request(s), used for contextual Help/Yes/No handling.
-//   Set up DynamoDB persistence to have the skill save and reload these attributes between skill sessions.
-
-function getMemoryAttributes() {
-    const memoryAttributes = {
-        "history": [],
-
-        // The remaining attributes will be useful after DynamoDB persistence is configured
-        "launchCount": 0,
-        "lastUseTimestamp": 0,
-
-        "lastSpeechOutput": {},
-        "nextIntent": []
-
-    };
-    return memoryAttributes;
-};
-
-const maxHistorySize = 20; // remember only latest 20 intents 
 
 
 //Intent Handlers =============================================
@@ -62,17 +41,17 @@ const AMAZON_CancelIntent_Handler = {
 };
 
 //help intent
-const HelpIntent_Handler = {
+const AMAZON_HelpIntent_Handler = {
     canHandle(handlerInput) {
         const request = handlerInput.requestEnvelope.request;
-        return request.type === 'IntentRequest' && request.intent.name === 'HelpIntent';
+        return request.type === 'IntentRequest' && request.intent.name === 'AMAZON.HelpIntent';
     },
     handle(handlerInput) {
         const responseBuilder = handlerInput.responseBuilder;
 
         let say = 'Some of the animals are dog, cat, and horse.';
 
-        say += ' Here something you can ask me, ';
+        say += ' Here something you can ask me: Tell me about \'animal of your choice\', Add \'animal of your choice\'';
 
         return responseBuilder
             .speak(say)
@@ -111,8 +90,8 @@ const AMAZON_FallbackIntent_Handler = {
         const responseBuilder = handlerInput.responseBuilder;
 
         return responseBuilder
-            .speak('Sorry I didnt understand what you said')
-            .reprompt('try again ')
+            .speak('Sorry I did not understand what you said, say \' help \' to get some advice')
+            .reprompt('Please try again!')
             .getResponse();
     },
 };
@@ -150,15 +129,16 @@ const AnimalNameIntent_Handler = {
         
         return dbHelper.getAnimalFact(animalName)
             .then((data) => {
-                var speechText = "There are some facts as about the " + animalName+" as following. "
-                if (data.length == 0) {
-                    speechText = "Sorry the database is empty, add fact to your favorite anmimal by saying add animal"
+                var speechText = "There are some facts as about the " + animalName + " as following. "
+
+                if (data.map(e => e.Animal_Name) != animalName) {
+                    speechText = "Sorry the "+animalName+ " is not there yet, to request build Facts by saying \'add "+animalName+"\'."
                 } else {
                     speechText += data.map(e => e.Fact1) +" If you want to hear more about "+animalName+". Say \'More About " + animalName+"\'."
                 }
                 return responseBuilder
                     .speak(speechText)
-                    .reprompt("Hi")
+                    .reprompt("Please try again!")
                     .getResponse();
             })        
     },
@@ -175,23 +155,61 @@ const MoreFactIntent_Handler = {
         const responseBuilder = handlerInput.responseBuilder;
 
         let slotValues = getSlotValues(request.intent.slots);
-        const animalName = slotValues.animalname.heardAs;
-
+        const animalName = slotValues.morefactanimalname.heardAs;
+        
         return dbHelper.getAnimalFact(animalName)
             .then((data) => {
-                var speechText = ""
-                if (data.length == 0) {
-                    speechText = "Sorry the database is empty, add fact to your favorite anmimal by saying add animal"
+                if (data.map(e => e.Animal_Name) != animalName) {
+                    speechText = "Sorry the " + animalName + " is not there yet, to request build Facts by saying \'add " + animalName + "\'."
+                    return responseBuilder
+                        .speak(speechText)
+                        .reprompt("Please try again!")
+                        .getResponse();
                 } else {
-                    speechText += data.map(e => e.Fact2)
+                    var speechText = ""
+                    if (data.map(e => e.Fact2) == "") {
+                        speechText = "Sorry there is no more fact about " + animalName + " please try with other animal."
+                    } else {
+                        speechText += data.map(e => e.Fact2)
+                    }
+                    return responseBuilder
+                        .speak(speechText)
+                        .reprompt("Please try again!")
+                        .getResponse();
                 }
-                return responseBuilder
-                    .speak(speechText)
-                    .reprompt("Hi")
-                    .getResponse();
             })
     },
 
+};
+
+//request unknow animal
+const AddAnimalIntent_Handler = {
+    canHandle(handlerInput) {
+        const request = handlerInput.requestEnvelope.request;
+        return request.type === 'IntentRequest' && request.intent.name === 'AddAnimalIntent';
+    },
+    async handle(handlerInput) {
+        const request = handlerInput.requestEnvelope.request;
+        const responseBuilder = handlerInput.responseBuilder;
+        const slots = request.intent.slots;
+        const newAnimalName = slots.newanimalname.value;
+
+        return userDBRequest.addRequest(newAnimalName)
+            .then((data) => {
+                const speechText = 'You have sent request to create fact for '+newAnimalName+'.';
+                return responseBuilder
+                    .speak(speechText)
+                    .reprompt("Please try again!")
+                    .getResponse();
+            })
+            .catch((err) => {
+                console.log("Error occured while sending request", err);
+                const speechText = "we cannot request your animal right now. Try again!"
+                return responseBuilder
+                    .speak(speechText)
+                    .getResponse();
+            })
+    },
 };
 
 
@@ -208,7 +226,7 @@ const LaunchRequest_Handler = {
 
         return responseBuilder
             .speak(say)
-            .reprompt('try again, ' + say)
+            .reprompt('Please try again, ' + say)
             .getResponse();
     },
 };
@@ -234,7 +252,6 @@ const ErrorHandler = {
         const request = handlerInput.requestEnvelope.request;
 
         console.log(`Error handled: ${error.message}`);
-        // console.log(`Original Request was: ${JSON.stringify(request, null, 2)}`);
 
         return handlerInput.responseBuilder
             .speak('Sorry, an error occurred.  Please say again.')
@@ -244,17 +261,7 @@ const ErrorHandler = {
 };
 
 
-
-
 //Helper Functions ===================================================================
-
-function capitalize(myString) {
-
-    return myString.replace(/(?:^|\s)\S/g, function (a) { return a.toUpperCase(); });
-}
-
-
-
 
 function getSlotValues(filledSlots) {
     const slotValues = {};
@@ -297,72 +304,19 @@ function getSlotValues(filledSlots) {
     return slotValues;
 }
 
-function getExampleSlotValues(intentName, slotName) {
-
-    let examples = [];
-    let slotType = '';
-    let slotValuesFull = [];
-
-    let intents = model.interactionModel.languageModel.intents;
-    for (let i = 0; i < intents.length; i++) {
-        if (intents[i].name == intentName) {
-            let slots = intents[i].slots;
-            for (let j = 0; j < slots.length; j++) {
-                if (slots[j].name === slotName) {
-                    slotType = slots[j].type;
-
-                }
-            }
-        }
-
-    }
-    let types = model.interactionModel.languageModel.types;
-    for (let i = 0; i < types.length; i++) {
-        if (types[i].name === slotType) {
-            slotValuesFull = types[i].values;
-        }
-    }
-
-
-    examples.push(slotValuesFull[0].name.value);
-    examples.push(slotValuesFull[1].name.value);
-    if (slotValuesFull.length > 2) {
-        examples.push(slotValuesFull[2].name.value);
-    }
-
-
-    return examples;
-}
-
-function sayArray(myData, penultimateWord = 'and') {
-    let result = '';
-
-    myData.forEach(function (element, index, arr) {
-
-        if (index === 0) {
-            result = element;
-        } else if (index === myData.length - 1) {
-            result += ` ${penultimateWord} ${element}`;
-        } else {
-            result += `, ${element}`;
-        }
-    });
-    return result;
-}
-
-
 
 //Exports handler function and setup ===================================================
 const skillBuilder = Alexa.SkillBuilders.custom();
 exports.handler = skillBuilder
     .addRequestHandlers(
         AMAZON_CancelIntent_Handler,
-        HelpIntent_Handler,
+        AMAZON_HelpIntent_Handler,
         AMAZON_StopIntent_Handler,
         AMAZON_FallbackIntent_Handler,
         AMAZON_NavigateHomeIntent_Handler,
         AnimalNameIntent_Handler,
         MoreFactIntent_Handler,
+        AddAnimalIntent_Handler,
         LaunchRequest_Handler,
         SessionEndedHandler
     )
