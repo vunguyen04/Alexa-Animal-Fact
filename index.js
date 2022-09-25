@@ -194,20 +194,45 @@ const AddAnimalIntent_Handler = {
         const slots = request.intent.slots;
         const newAnimalName = slots.newanimalname.value;
 
-        return userDBRequest.addRequest(newAnimalName)
+        //check if animal already has fact
+        return dbHelper.getAnimalFact(newAnimalName)
             .then((data) => {
-                const speechText = 'You have sent request to create fact for '+newAnimalName+'.';
-                return responseBuilder
-                    .speak(speechText)
-                    .reprompt("Please try again!")
-                    .getResponse();
-            })
-            .catch((err) => {
-                console.log("Error occured while sending request", err);
-                const speechText = "we cannot request your animal right now. Try again!"
-                return responseBuilder
-                    .speak(speechText)
-                    .getResponse();
+                //check if animal request is sent
+                if (data.map(e => e.Animal_Name) != newAnimalName) {
+                    return userDBRequest.checkRequestName(newAnimalName)
+                        .then((data1) => {
+                            //if animal request doesn't exist either not having fact
+                            if (data1.map(e => e.Request_Animal_Name) != newAnimalName) {
+                                return userDBRequest.addRequest(newAnimalName)
+                                    .then((data2) => {
+                                        const speechText = 'You have sent request to create fact for ' + newAnimalName + '.';
+                                        return responseBuilder
+                                            .speak(speechText)
+                                            .reprompt("Please try again!")
+                                            .getResponse();
+                                    })
+                                    .catch((err) => {
+                                        console.log("Error occured while sending request", err);
+                                        const speechText = "we cannot request your animal right now. Try again!"
+                                        return responseBuilder
+                                            .speak(speechText)
+                                            .getResponse();
+                                    })
+                            } else {
+                                var speechText = "Sorry the request for " + newAnimalName + " is already sent."
+                                return responseBuilder
+                                    .speak(speechText)
+                                    .reprompt("Please try again!")
+                                    .getResponse();
+                            }
+                        })
+                } else {
+                    var speechText = "The fact for the " + newAnimalName + " already existed, please check by say \' tell me fact about " + newAnimalName +"\'."
+                    return responseBuilder
+                        .speak(speechText)
+                        .reprompt("Please try again!")
+                        .getResponse();
+                }
             })
     },
 };
